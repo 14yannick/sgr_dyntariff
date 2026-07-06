@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a dynamic tariff source",
+        "description": "Configure a VSE / SmartGridready conform dynamic tariff API. The default URL is the BKW feed-in remuneration (Abnahmeverguetung).",
+        "data": {
+          "name": "Name",
+          "url": "API URL",
+          "price_component": "Price component",
+          "vat": "VAT factor (e.g. 1.081 for 8.1%)",
+          "surcharge": "Fixed surcharge per kWh (applied after VAT)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not fetch or parse tariff data from this URL. Check the URL and try again."
+    },
+    "abort": {
+      "already_configured": "This URL and price component combination is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tariff options",
+        "data": {
+          "vat": "VAT factor (e.g. 1.081 for 8.1%)",
+          "surcharge": "Fixed surcharge per kWh (applied after VAT)"
+        }
+      }
+    }
+  },
+  "selector": {
+    "price_component": {
+      "options": {
+        "feed_in": "Feed-in remuneration",
+        "electricity": "Electricity (energy) price",
+        "grid": "Grid usage price",
+        "integrated": "Integrated (total) price",
+        "regional_fees": "Regional fees"
+      }
+    }
+  }
+}

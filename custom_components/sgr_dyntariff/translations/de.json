@@ -1,0 +1,45 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dynamische Tarifquelle hinzufuegen",
+        "description": "Konfiguration einer VSE-/SmartGridready-konformen API fuer dynamische Tarife. Die Standard-URL ist die BKW Abnahmeverguetung.",
+        "data": {
+          "name": "Name",
+          "url": "API-URL",
+          "price_component": "Preiskomponente",
+          "vat": "MwSt-Faktor (z.B. 1.081 fuer 8.1%)",
+          "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Tarifdaten konnten von dieser URL nicht geladen oder verarbeitet werden. Bitte URL pruefen."
+    },
+    "abort": {
+      "already_configured": "Diese Kombination aus URL und Preiskomponente ist bereits konfiguriert."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tarifoptionen",
+        "data": {
+          "vat": "MwSt-Faktor (z.B. 1.081 fuer 8.1%)",
+          "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)"
+        }
+      }
+    }
+  },
+  "selector": {
+    "price_component": {
+      "options": {
+        "feed_in": "Abnahmeverguetung (Einspeisung)",
+        "electricity": "Energiepreis",
+        "grid": "Netznutzung",
+        "integrated": "Integrierter Gesamtpreis",
+        "regional_fees": "Regionale Abgaben"
+      }
+    }
+  }
+}
