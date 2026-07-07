@@ -14,6 +14,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -24,6 +25,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_MINOR_UNIT,
     CONF_PRICE_COMPONENT,
     CONF_SURCHARGE,
     CONF_VAT,
@@ -118,6 +120,10 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                     mode=NumberSelectorMode.BOX,
                 )
             ),
+            vol.Optional(
+                CONF_MINOR_UNIT,
+                default=defaults.get(CONF_MINOR_UNIT, False),
+            ): BooleanSelector(),
         }
     )
 
@@ -131,6 +137,10 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
     current_surcharge = config_entry.options.get(
         CONF_SURCHARGE,
         config_entry.data.get(CONF_SURCHARGE, 0.0),
+    )
+    current_minor_unit = config_entry.options.get(
+        CONF_MINOR_UNIT,
+        config_entry.data.get(CONF_MINOR_UNIT, False),
     )
 
     return vol.Schema(
@@ -157,6 +167,10 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
                     mode=NumberSelectorMode.BOX,
                 )
             ),
+            vol.Optional(
+                CONF_MINOR_UNIT,
+                default=current_minor_unit,
+            ): BooleanSelector(),
         }
     )
 

@@ -36,7 +36,13 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, PRICE_COMPONENTS, UNIT_MAP, UPDATE_INTERVAL_MINUTES
+from .const import (
+    DOMAIN,
+    MINOR_UNIT_MAP,
+    PRICE_COMPONENTS,
+    UNIT_MAP,
+    UPDATE_INTERVAL_MINUTES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +59,13 @@ def _parse_timestamp(raw: Any):
     return ts
 
 
-def parse_payload(payload: Any, component: str, vat: float, surcharge: float) -> dict:
+def parse_payload(
+    payload: Any,
+    component: str,
+    vat: float,
+    surcharge: float,
+    minor_unit: bool = False,
+) -> dict:
     """Convert a TariffDto payload into normalized slot data."""
     if not isinstance(payload, dict) or "prices" not in payload:
         raise UpdateFailed(f"Unexpected payload (no 'prices' key): {payload!r:.200}")
@@ -90,12 +102,15 @@ def parse_payload(payload: Any, component: str, vat: float, surcharge: float) ->
         if unit is None:
             raw_unit = comp.get("unit")
             unit = UNIT_MAP.get(raw_unit, raw_unit)
+            if minor_unit:
+                unit = MINOR_UNIT_MAP.get(unit, unit)
 
+        factor = 100.0 if minor_unit else 1.0
         slots.append(
             {
                 "start": start,
                 "end": end,
-                "price": round(float(value) * vat + surcharge, 4),
+                "price": round((float(value) * vat + surcharge) * factor, 4),
             }
         )
 
@@ -118,6 +133,7 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         component: str,
         vat: float,
         surcharge: float,
+        minor_unit: bool = False,
     ) -> None:
         super().__init__(
             hass,
@@ -130,6 +146,7 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         self._component = component
         self._vat = vat
         self._surcharge = surcharge
+        self._minor_unit = minor_unit
         self._slot_cache: dict[str, dict] = {}
 
     async def _async_update_data(self) -> dict:
@@ -148,7 +165,9 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Error fetching tariffs: {err}") from err
 
-        data = parse_payload(payload, self._component, self._vat, self._surcharge)
+        data = parse_payload(
+            payload, self._component, self._vat, self._surcharge, self._minor_unit
+        )
 
         # Merge into cache (new data wins per slot); prune old slots.
         for slot in data["slots"]:

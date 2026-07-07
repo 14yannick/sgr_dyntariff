@@ -7,6 +7,7 @@ from homeassistant.const import CONF_URL, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_MINOR_UNIT,
     CONF_PRICE_COMPONENT,
     CONF_SURCHARGE,
     CONF_VAT,
@@ -25,6 +26,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     surcharge = entry.options.get(
         CONF_SURCHARGE, entry.data.get(CONF_SURCHARGE, 0.0)
     )
+    minor_unit = entry.options.get(
+        CONF_MINOR_UNIT, entry.data.get(CONF_MINOR_UNIT, False)
+    )
 
     coordinator = SgrTariffCoordinator(
         hass,
@@ -32,6 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         component=entry.data.get(CONF_PRICE_COMPONENT, DEFAULT_COMPONENT),
         vat=float(vat),
         surcharge=float(surcharge),
+        minor_unit=bool(minor_unit),
     )
     await coordinator.async_config_entry_first_refresh()
 

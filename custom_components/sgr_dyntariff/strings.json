@@ -9,7 +9,8 @@
           "url": "API URL",
           "price_component": "Price component",
           "vat": "VAT factor (e.g. 1.081 for 8.1%)",
-          "surcharge": "Fixed surcharge per kWh (applied after VAT)"
+          "surcharge": "Fixed surcharge per kWh (applied after VAT)",
+          "display_minor_unit": "Display in minor unit (Rp./ct instead of CHF/EUR)"
         }
       }
     },
@@ -26,7 +27,8 @@
         "title": "Tariff options",
         "data": {
           "vat": "VAT factor (e.g. 1.081 for 8.1%)",
-          "surcharge": "Fixed surcharge per kWh (applied after VAT)"
+          "surcharge": "Fixed surcharge per kWh (applied after VAT)",
+          "display_minor_unit": "Display in minor unit (Rp./ct instead of CHF/EUR)"
         }
       }
     }
