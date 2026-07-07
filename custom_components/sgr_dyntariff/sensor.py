@@ -8,7 +8,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_change
@@ -28,11 +28,16 @@ async def async_setup_entry(
     entity = SgrPriceSensor(coordinator, entry)
     async_add_entities([entity])
 
+    @callback
+    def _on_quarter_hour(_now: Any) -> None:
+        """Refresh the sensor state exactly on each 15-min slot boundary."""
+        entity.async_schedule_update_ha_state(True)
+
     # Flip the state exactly on every quarter hour (15-min slot resolution)
     entry.async_on_unload(
         async_track_time_change(
             hass,
-            lambda _now: entity.async_schedule_update_ha_state(True),
+            _on_quarter_hour,
             minute=[0, 15, 30, 45],
             second=5,
         )
