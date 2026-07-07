@@ -95,7 +95,6 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 SelectSelectorConfig(
                     options=PRICE_COMPONENTS,
                     mode=SelectSelectorMode.DROPDOWN,
-                    translation_key="price_component",
                 )
             ),
             vol.Optional(
