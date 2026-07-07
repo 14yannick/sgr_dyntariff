@@ -15,7 +15,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Tarifdaten konnten von dieser URL nicht geladen oder verarbeitet werden. Bitte URL pruefen."
+      "cannot_connect": "Tarifdaten konnten von dieser URL nicht geladen oder verarbeitet werden. Bitte URL pruefen.",
+      "unknown": "Unerwarteter Fehler. Bitte die Home-Assistant-Logs pruefen."
     },
     "abort": {
       "already_configured": "Diese Kombination aus URL und Preiskomponente ist bereits konfiguriert."
@@ -30,17 +31,6 @@
           "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)",
           "display_minor_unit": "Anzeige in Rappen/Cent statt CHF/EUR"
         }
-      }
-    }
-  },
-  "selector": {
-    "price_component": {
-      "options": {
-        "feed_in": "Abnahmeverguetung (Einspeisung)",
-        "electricity": "Energiepreis",
-        "grid": "Netznutzung",
-        "integrated": "Integrierter Gesamtpreis",
-        "regional_fees": "Regionale Abgaben"
       }
     }
   }

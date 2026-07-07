@@ -11,18 +11,7 @@ from aiohttp import ClientError, ClientResponseError
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_NAME, CONF_URL
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import (
-    BooleanSelector,
-    NumberSelector,
-    NumberSelectorConfig,
-    NumberSelectorMode,
-    SelectSelector,
-    SelectSelectorConfig,
-    SelectSelectorMode,
-    TextSelector,
-)
 
 from .const import (
     CONF_MINOR_UNIT,
@@ -45,7 +34,7 @@ async def _validate_source(
     url: str,
     component: str,
 ) -> dict[str, Any]:
-    """Fetch and parse the source once; return info or raise."""
+    """Fetch and parse the source once."""
     session = async_get_clientsession(hass)
     clean_url = url.strip()
 
@@ -55,7 +44,6 @@ async def _validate_source(
         timeout=30,
     ) as resp:
         if resp.status == 404:
-            # Valid endpoint, cache currently empty -> accept.
             return {"slots": 0, "unit": None}
 
         if resp.status >= 400:
@@ -83,46 +71,27 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             vol.Required(
                 CONF_NAME,
                 default=defaults.get(CONF_NAME, DEFAULT_NAME),
-            ): TextSelector(),
+            ): str,
             vol.Required(
                 CONF_URL,
                 default=defaults.get(CONF_URL, DEFAULT_URL),
-            ): TextSelector(),
+            ): str,
             vol.Required(
                 CONF_PRICE_COMPONENT,
                 default=defaults.get(CONF_PRICE_COMPONENT, DEFAULT_COMPONENT),
-            ): SelectSelector(
-                SelectSelectorConfig(
-                    options=PRICE_COMPONENTS,
-                    mode=SelectSelectorMode.DROPDOWN,
-                )
-            ),
+            ): vol.In(PRICE_COMPONENTS),
             vol.Optional(
                 CONF_VAT,
                 default=defaults.get(CONF_VAT, 1.0),
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=0.5,
-                    max=2.0,
-                    step=0.001,
-                    mode=NumberSelectorMode.BOX,
-                )
-            ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=2.0)),
             vol.Optional(
                 CONF_SURCHARGE,
                 default=defaults.get(CONF_SURCHARGE, 0.0),
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=-1.0,
-                    max=1.0,
-                    step=0.0001,
-                    mode=NumberSelectorMode.BOX,
-                )
-            ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=-1.0, max=1.0)),
             vol.Optional(
                 CONF_MINOR_UNIT,
                 default=defaults.get(CONF_MINOR_UNIT, False),
-            ): BooleanSelector(),
+            ): bool,
         }
     )
 
@@ -147,29 +116,15 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
             vol.Optional(
                 CONF_VAT,
                 default=current_vat,
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=0.5,
-                    max=2.0,
-                    step=0.001,
-                    mode=NumberSelectorMode.BOX,
-                )
-            ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.5, max=2.0)),
             vol.Optional(
                 CONF_SURCHARGE,
                 default=current_surcharge,
-            ): NumberSelector(
-                NumberSelectorConfig(
-                    min=-1.0,
-                    max=1.0,
-                    step=0.0001,
-                    mode=NumberSelectorMode.BOX,
-                )
-            ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=-1.0, max=1.0)),
             vol.Optional(
                 CONF_MINOR_UNIT,
                 default=current_minor_unit,
-            ): BooleanSelector(),
+            ): bool,
         }
     )
 
@@ -179,19 +134,18 @@ class SgrDyntariffConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None):
         """Handle the initial setup step."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            name = user_input[CONF_NAME].strip()
             url = user_input[CONF_URL].strip()
             component = user_input[CONF_PRICE_COMPONENT]
 
             user_input = {
                 **user_input,
+                CONF_NAME: name,
                 CONF_URL: url,
             }
 
@@ -218,10 +172,7 @@ class SgrDyntariffConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error while validating tariff source")
                 errors["base"] = "unknown"
             else:
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME],
-                    data=user_input,
-                )
+                return self.async_create_entry(title=name, data=user_input)
 
         return self.async_show_form(
             step_id="user",
@@ -237,12 +188,9 @@ class SgrDyntariffConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class SgrDyntariffOptionsFlow(OptionsFlow):
-    """Allow changing VAT and surcharge after setup."""
+    """Allow changing VAT, surcharge, and display options after setup."""
 
-    async def async_step_init(
-        self,
-        user_input: dict[str, Any] | None = None,
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage the integration options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)

@@ -15,7 +15,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Could not fetch or parse tariff data from this URL. Check the URL and try again."
+      "cannot_connect": "Could not fetch or parse tariff data from this URL. Check the URL and try again.",
+      "unknown": "Unexpected error. Check the Home Assistant logs."
     },
     "abort": {
       "already_configured": "This URL and price component combination is already configured."
@@ -30,17 +31,6 @@
           "surcharge": "Fixed surcharge per kWh (applied after VAT)",
           "display_minor_unit": "Display in minor unit (Rp./ct instead of CHF/EUR)"
         }
-      }
-    }
-  },
-  "selector": {
-    "price_component": {
-      "options": {
-        "feed_in": "Feed-in remuneration",
-        "electricity": "Electricity (energy) price",
-        "grid": "Grid usage price",
-        "integrated": "Integrated (total) price",
-        "regional_fees": "Regional fees"
       }
     }
   }
