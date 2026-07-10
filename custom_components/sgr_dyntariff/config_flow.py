@@ -12,9 +12,11 @@ from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.const import CONF_NAME, CONF_URL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import EntitySelector, EntitySelectorConfig
 
 from .const import (
-    CONF_MINOR_UNIT,
+    CONF_POWER_ENTITY,
+    CONF_POWER_INVERT,
     CONF_PRICE_COMPONENT,
     CONF_SURCHARGE,
     CONF_VAT,
@@ -89,8 +91,12 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 default=defaults.get(CONF_SURCHARGE, 0.0),
             ): vol.All(vol.Coerce(float), vol.Range(min=-1.0, max=1.0)),
             vol.Optional(
-                CONF_MINOR_UNIT,
-                default=defaults.get(CONF_MINOR_UNIT, False),
+                CONF_POWER_ENTITY,
+                default=defaults.get(CONF_POWER_ENTITY, ""),
+            ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+            vol.Optional(
+                CONF_POWER_INVERT,
+                default=defaults.get(CONF_POWER_INVERT, False),
             ): bool,
         }
     )
@@ -106,9 +112,13 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
         CONF_SURCHARGE,
         config_entry.data.get(CONF_SURCHARGE, 0.0),
     )
-    current_minor_unit = config_entry.options.get(
-        CONF_MINOR_UNIT,
-        config_entry.data.get(CONF_MINOR_UNIT, False),
+    current_power_entity = config_entry.options.get(
+        CONF_POWER_ENTITY,
+        config_entry.data.get(CONF_POWER_ENTITY, ""),
+    )
+    current_power_invert = config_entry.options.get(
+        CONF_POWER_INVERT,
+        config_entry.data.get(CONF_POWER_INVERT, False),
     )
 
     return vol.Schema(
@@ -122,8 +132,12 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
                 default=current_surcharge,
             ): vol.All(vol.Coerce(float), vol.Range(min=-1.0, max=1.0)),
             vol.Optional(
-                CONF_MINOR_UNIT,
-                default=current_minor_unit,
+                CONF_POWER_ENTITY,
+                default=current_power_entity,
+            ): EntitySelector(EntitySelectorConfig(domain="sensor")),
+            vol.Optional(
+                CONF_POWER_INVERT,
+                default=current_power_invert,
             ): bool,
         }
     )
@@ -142,12 +156,22 @@ class SgrDyntariffConfigFlow(ConfigFlow, domain=DOMAIN):
             name = user_input[CONF_NAME].strip()
             url = user_input[CONF_URL].strip()
             component = user_input[CONF_PRICE_COMPONENT]
+            power_entity = (user_input.get(CONF_POWER_ENTITY) or "").strip()
 
             user_input = {
                 **user_input,
                 CONF_NAME: name,
                 CONF_URL: url,
+                CONF_POWER_ENTITY: power_entity,
             }
+
+            if power_entity and self.hass.states.get(power_entity) is None:
+                errors["base"] = "power_entity_not_found"
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=_user_schema(user_input),
+                    errors=errors,
+                )
 
             await self.async_set_unique_id(f"{url}::{component}")
             self._abort_if_unique_id_configured()
@@ -192,10 +216,19 @@ class SgrDyntariffOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Manage the integration options."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            power_entity = (user_input.get(CONF_POWER_ENTITY) or "").strip()
+            user_input = {**user_input, CONF_POWER_ENTITY: power_entity}
+
+            if power_entity and self.hass.states.get(power_entity) is None:
+                errors["base"] = "power_entity_not_found"
+            else:
+                return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(
             step_id="init",
             data_schema=_options_schema(self.config_entry),
+            errors=errors,
         )

@@ -10,12 +10,14 @@
           "price_component": "Preiskomponente",
           "vat": "MwSt-Faktor (z.B. 1.081 fuer 8.1%)",
           "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)",
-          "display_minor_unit": "Anzeige in Rappen/Cent statt CHF/EUR"
+          "power_entity": "Leistungssensor fuer Ertragsrate (optional, z.B. sensor.emma_feed_in_power)",
+          "power_invert": "Leistungsvorzeichen invertieren (aktivieren, wenn positiv = Einspeisung)"
         }
       }
     },
     "error": {
       "cannot_connect": "Tarifdaten konnten von dieser URL nicht geladen oder verarbeitet werden. Bitte URL pruefen.",
+      "power_entity_not_found": "Es wurde keine Entity mit dieser ID gefunden. Bitte in Entwicklerwerkzeuge -> Zustaende pruefen.",
       "unknown": "Unerwarteter Fehler. Bitte die Home-Assistant-Logs pruefen."
     },
     "abort": {
@@ -29,9 +31,13 @@
         "data": {
           "vat": "MwSt-Faktor (z.B. 1.081 fuer 8.1%)",
           "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)",
-          "display_minor_unit": "Anzeige in Rappen/Cent statt CHF/EUR"
+          "power_entity": "Leistungssensor fuer Ertragsrate (optional, z.B. sensor.emma_feed_in_power)",
+          "power_invert": "Leistungsvorzeichen invertieren (aktivieren, wenn positiv = Einspeisung)"
         }
       }
+    },
+    "error": {
+      "power_entity_not_found": "Es wurde keine Entity mit dieser ID gefunden. Bitte in Entwicklerwerkzeuge -> Zustaende pruefen."
     }
   }
 }

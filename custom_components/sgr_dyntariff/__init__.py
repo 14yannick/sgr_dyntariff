@@ -7,14 +7,13 @@ from homeassistant.const import CONF_URL, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
-    CONF_MINOR_UNIT,
     CONF_PRICE_COMPONENT,
     CONF_SURCHARGE,
     CONF_VAT,
     DEFAULT_COMPONENT,
     DOMAIN,
 )
-from .coordinator import SgrTariffCoordinator
+from .coordinator import SgrTariffCoordinator, async_remove_stored_slots
 
 PLATFORMS = [Platform.SENSOR]
 
@@ -26,9 +25,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     surcharge = entry.options.get(
         CONF_SURCHARGE, entry.data.get(CONF_SURCHARGE, 0.0)
     )
-    minor_unit = entry.options.get(
-        CONF_MINOR_UNIT, entry.data.get(CONF_MINOR_UNIT, False)
-    )
 
     coordinator = SgrTariffCoordinator(
         hass,
@@ -36,8 +32,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         component=entry.data.get(CONF_PRICE_COMPONENT, DEFAULT_COMPONENT),
         vat=float(vat),
         surcharge=float(surcharge),
-        minor_unit=bool(minor_unit),
+        entry_id=entry.entry_id,
     )
+    await coordinator.async_restore_slots()
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
@@ -58,3 +55,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up the persisted slot cache when the entry is deleted."""
+    await async_remove_stored_slots(hass, entry.entry_id)

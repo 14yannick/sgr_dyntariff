@@ -19,7 +19,10 @@ TariffDto schema:
 Providers typically publish the next day's prices in the evening and may
 then return ONLY the new day. The coordinator therefore merges every
 fetch into a slot cache and keeps recent slots, so "today" stays known
-after the evening publication.
+after the evening publication. That cache is also persisted to disk after
+every successful fetch and restored before the first one on startup, so a
+restart between the evening publication and midnight doesn't lose today's
+remaining slots even though the API itself would no longer serve them.
 """
 
 from __future__ import annotations
@@ -30,21 +33,28 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
 from homeassistant.util import dt as dt_util
 
-from .const import (
-    DOMAIN,
-    MINOR_UNIT_MAP,
-    PRICE_COMPONENTS,
-    UNIT_MAP,
-    UPDATE_INTERVAL_MINUTES,
-)
+from .const import DOMAIN, PRICE_COMPONENTS, UNIT_MAP, UPDATE_INTERVAL_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
+
+STORAGE_VERSION = 1
+
+
+def _slot_store(hass: HomeAssistant, entry_id: str) -> Store[dict]:
+    """Build the storage handle for a config entry's persisted slot cache."""
+    return Store(hass, STORAGE_VERSION, f"{DOMAIN}_{entry_id}_slots")
+
+
+async def async_remove_stored_slots(hass: HomeAssistant, entry_id: str) -> None:
+    """Delete the persisted slot cache for a removed config entry."""
+    await _slot_store(hass, entry_id).async_remove()
 
 
 def _parse_timestamp(raw: Any):
@@ -59,13 +69,7 @@ def _parse_timestamp(raw: Any):
     return ts
 
 
-def parse_payload(
-    payload: Any,
-    component: str,
-    vat: float,
-    surcharge: float,
-    minor_unit: bool = False,
-) -> dict:
+def parse_payload(payload: Any, component: str, vat: float, surcharge: float) -> dict:
     """Convert a TariffDto payload into normalized slot data."""
     if not isinstance(payload, dict) or "prices" not in payload:
         raise UpdateFailed(f"Unexpected payload (no 'prices' key): {payload!r:.200}")
@@ -102,15 +106,12 @@ def parse_payload(
         if unit is None:
             raw_unit = comp.get("unit")
             unit = UNIT_MAP.get(raw_unit, raw_unit)
-            if minor_unit:
-                unit = MINOR_UNIT_MAP.get(unit, unit)
 
-        factor = 100.0 if minor_unit else 1.0
         slots.append(
             {
                 "start": start,
                 "end": end,
-                "price": round((float(value) * vat + surcharge) * factor, 4),
+                "price": round(float(value) * vat + surcharge, 4),
             }
         )
 
@@ -133,7 +134,7 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         component: str,
         vat: float,
         surcharge: float,
-        minor_unit: bool = False,
+        entry_id: str,
     ) -> None:
         super().__init__(
             hass,
@@ -146,8 +147,50 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         self._component = component
         self._vat = vat
         self._surcharge = surcharge
-        self._minor_unit = minor_unit
         self._slot_cache: dict[str, dict] = {}
+        self._store = _slot_store(hass, entry_id)
+
+    async def async_restore_slots(self) -> None:
+        """Seed the slot cache from disk before the first live fetch.
+
+        Providers typically stop serving "today" once they publish
+        tomorrow's prices in the evening. If HA restarts between that
+        publication and midnight, a fresh fetch alone would leave the
+        rest of today unknown -- restoring the last persisted cache
+        first (and merging the live fetch on top, same as any other
+        update) keeps today's remaining slots available.
+        """
+        stored = await self._store.async_load()
+        if not stored:
+            return
+        for raw in stored.get("slots", []):
+            start = _parse_timestamp(raw.get("start"))
+            end = _parse_timestamp(raw.get("end"))
+            if start is None or end is None:
+                continue
+            self._slot_cache[start.isoformat()] = {
+                "start": start,
+                "end": end,
+                "price": raw["price"],
+            }
+
+    async def _async_save_slots(self) -> None:
+        """Persist the current slot cache so a restart can recover today."""
+        try:
+            await self._store.async_save(
+                {
+                    "slots": [
+                        {
+                            "start": slot["start"].isoformat(),
+                            "end": slot["end"].isoformat(),
+                            "price": slot["price"],
+                        }
+                        for slot in self._slot_cache.values()
+                    ]
+                }
+            )
+        except OSError:
+            _LOGGER.warning("Could not persist slot cache", exc_info=True)
 
     async def _async_update_data(self) -> dict:
         try:
@@ -165,9 +208,7 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Error fetching tariffs: {err}") from err
 
-        data = parse_payload(
-            payload, self._component, self._vat, self._surcharge, self._minor_unit
-        )
+        data = parse_payload(payload, self._component, self._vat, self._surcharge)
 
         # Merge into cache (new data wins per slot); prune old slots.
         for slot in data["slots"]:
@@ -177,4 +218,5 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
             del self._slot_cache[key]
 
         data["slots"] = sorted(self._slot_cache.values(), key=lambda s: s["start"])
+        await self._async_save_slots()
         return data

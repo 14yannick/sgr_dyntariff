@@ -84,9 +84,10 @@ automation:
 
 ## Notes / limitations
 
-- The slot cache is in-memory: if Home Assistant restarts between the
-  evening publication (~18:00) and midnight, the remainder of *today* can
-  be unknown until midnight (the API no longer serves it).
+- The slot cache is persisted to disk after every successful fetch and
+  restored on startup, so a restart between the evening publication
+  (~18:00) and midnight still has the remainder of *today* available even
+  though the API itself no longer serves it at that point.
 - Version 2 of the SmartGridready specification (valid for 2027) was
   published in June 2026; this integration targets V1 and will be updated.
 

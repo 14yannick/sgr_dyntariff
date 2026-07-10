@@ -10,12 +10,14 @@
           "price_component": "Price component",
           "vat": "VAT factor (e.g. 1.081 for 8.1%)",
           "surcharge": "Fixed surcharge per kWh (applied after VAT)",
-          "display_minor_unit": "Display in minor unit (Rp./ct instead of CHF/EUR)"
+          "power_entity": "Power sensor for export rate (optional, e.g. sensor.emma_feed_in_power)",
+          "power_invert": "Invert power sign (check if positive means exporting)"
         }
       }
     },
     "error": {
       "cannot_connect": "Could not fetch or parse tariff data from this URL. Check the URL and try again.",
+      "power_entity_not_found": "No entity with that id was found. Check Developer Tools -> States.",
       "unknown": "Unexpected error. Check the Home Assistant logs."
     },
     "abort": {
@@ -29,9 +31,13 @@
         "data": {
           "vat": "VAT factor (e.g. 1.081 for 8.1%)",
           "surcharge": "Fixed surcharge per kWh (applied after VAT)",
-          "display_minor_unit": "Display in minor unit (Rp./ct instead of CHF/EUR)"
+          "power_entity": "Power sensor for export rate (optional, e.g. sensor.emma_feed_in_power)",
+          "power_invert": "Invert power sign (check if positive means exporting)"
         }
       }
+    },
+    "error": {
+      "power_entity_not_found": "No entity with that id was found. Check Developer Tools -> States."
     }
   }
 }
