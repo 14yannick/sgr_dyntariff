@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -51,23 +51,35 @@ def _today_slots(data: dict | None) -> list[dict]:
     )
 
 
-def _max_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
-    """Return (max_price, first_slot, last_slot) for today's first run at that price."""
+def _price_extreme_run(
+    data: dict | None, pick: Callable[[list[float]], float]
+) -> tuple[float, dict, dict] | None:
+    """Return (price, first_slot, last_slot) for today's first run at the picked price."""
     today_slots = _today_slots(data)
     if not today_slots:
         return None
-    max_price = max(s["price"] for s in today_slots)
+    target_price = pick([s["price"] for s in today_slots])
 
     start_slot = end_slot = None
     for slot in today_slots:
-        if slot["price"] == max_price:
+        if slot["price"] == target_price:
             if start_slot is None:
                 start_slot = slot
             end_slot = slot
         elif start_slot is not None:
-            break  # contiguous run at max_price ended
+            break  # contiguous run at target_price ended
 
-    return max_price, start_slot, end_slot
+    return target_price, start_slot, end_slot
+
+
+def _max_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
+    """Return (max_price, first_slot, last_slot) for today's first run at that price."""
+    return _price_extreme_run(data, max)
+
+
+def _min_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
+    """Return (min_price, first_slot, last_slot) for today's first run at that price."""
+    return _price_extreme_run(data, min)
 
 
 async def async_setup_entry(
@@ -78,9 +90,12 @@ async def async_setup_entry(
     coordinator: SgrTariffCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = [
         SgrPriceSensor(coordinator, entry),
-        SgrMaxPriceTodaySensor(coordinator, entry),
-        SgrMaxPriceSlotSensor(coordinator, entry, "start"),
-        SgrMaxPriceSlotSensor(coordinator, entry, "end"),
+        SgrPriceExtremeTodaySensor(coordinator, entry, "max"),
+        SgrPriceExtremeTodaySensor(coordinator, entry, "min"),
+        SgrPriceExtremeSlotSensor(coordinator, entry, "max", "start"),
+        SgrPriceExtremeSlotSensor(coordinator, entry, "max", "end"),
+        SgrPriceExtremeSlotSensor(coordinator, entry, "min", "start"),
+        SgrPriceExtremeSlotSensor(coordinator, entry, "min", "end"),
     ]
 
     power_entity = entry.options.get(
@@ -249,17 +264,20 @@ class SgrExportValueRateSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEn
         return round(export_kw * slot["price"], 5)
 
 
-class SgrMaxPriceTodaySensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
-    """Highest price of today, with the time interval it applies to."""
+class SgrPriceExtremeTodaySensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+    """Highest or lowest price of today, with the time interval it applies to."""
 
-    _attr_icon = "mdi:trending-up"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_has_entity_name = True
-    _attr_name = "Max price today"
 
-    def __init__(self, coordinator: SgrTariffCoordinator, entry: ConfigEntry) -> None:
+    def __init__(
+        self, coordinator: SgrTariffCoordinator, entry: ConfigEntry, kind: str
+    ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{entry.entry_id}_max_price_today"
+        self._run_fn = _max_price_run if kind == "max" else _min_price_run
+        self._attr_icon = "mdi:trending-up" if kind == "max" else "mdi:trending-down"
+        self._attr_name = f"{'Max' if kind == 'max' else 'Min'} price today"
+        self._attr_unique_id = f"{entry.entry_id}_{kind}_price_today"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.data.get(CONF_NAME) or entry.title,
@@ -274,12 +292,12 @@ class SgrMaxPriceTodaySensor(CoordinatorEntity[SgrTariffCoordinator], SensorEnti
 
     @property
     def native_value(self) -> float | None:
-        run = _max_price_run(self.coordinator.data)
+        run = self._run_fn(self.coordinator.data)
         return run[0] if run else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        run = _max_price_run(self.coordinator.data)
+        run = self._run_fn(self.coordinator.data)
         if run is None:
             return {"valid_from": None, "valid_until": None}
         _, start_slot, end_slot = run
@@ -289,8 +307,8 @@ class SgrMaxPriceTodaySensor(CoordinatorEntity[SgrTariffCoordinator], SensorEnti
         }
 
 
-class SgrMaxPriceSlotSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
-    """Start or end of today's highest-price slot, for time-trigger automations.
+class SgrPriceExtremeSlotSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+    """Start or end of today's highest/lowest-price slot, for time-trigger automations.
 
     HA's time trigger accepts a sensor entity_id for its `at:` option as long
     as the state is a datetime, so these can be used directly, e.g.:
@@ -307,13 +325,16 @@ class SgrMaxPriceSlotSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntit
         self,
         coordinator: SgrTariffCoordinator,
         entry: ConfigEntry,
+        kind: str,
         edge: str,
     ) -> None:
         super().__init__(coordinator)
+        self._run_fn = _max_price_run if kind == "max" else _min_price_run
         self._edge = edge
+        label = "Max" if kind == "max" else "Min"
         self._attr_icon = "mdi:clock-start" if edge == "start" else "mdi:clock-end"
-        self._attr_name = f"Max price {edge}"
-        self._attr_unique_id = f"{entry.entry_id}_max_price_{edge}"
+        self._attr_name = f"{label} price {edge}"
+        self._attr_unique_id = f"{entry.entry_id}_{kind}_price_{edge}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.data.get(CONF_NAME) or entry.title,
@@ -324,7 +345,7 @@ class SgrMaxPriceSlotSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntit
 
     @property
     def native_value(self):
-        run = _max_price_run(self.coordinator.data)
+        run = self._run_fn(self.coordinator.data)
         if run is None:
             return None
         _, start_slot, end_slot = run

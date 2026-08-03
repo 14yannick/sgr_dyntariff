@@ -92,7 +92,9 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             ): vol.All(vol.Coerce(float), vol.Range(min=-1.0, max=1.0)),
             vol.Optional(
                 CONF_POWER_ENTITY,
-                default=defaults.get(CONF_POWER_ENTITY, ""),
+                description={
+                    "suggested_value": defaults.get(CONF_POWER_ENTITY) or None
+                },
             ): EntitySelector(EntitySelectorConfig(domain="sensor")),
             vol.Optional(
                 CONF_POWER_INVERT,
@@ -133,7 +135,7 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
             ): vol.All(vol.Coerce(float), vol.Range(min=-1.0, max=1.0)),
             vol.Optional(
                 CONF_POWER_ENTITY,
-                default=current_power_entity,
+                description={"suggested_value": current_power_entity or None},
             ): EntitySelector(EntitySelectorConfig(domain="sensor")),
             vol.Optional(
                 CONF_POWER_INVERT,
