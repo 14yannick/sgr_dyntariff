@@ -15,7 +15,7 @@ from .const import (
 )
 from .coordinator import SgrTariffCoordinator, async_remove_stored_slots
 
-PLATFORMS = [Platform.SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -11,7 +11,8 @@
           "vat": "MwSt-Faktor (z.B. 1.081 fuer 8.1%)",
           "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)",
           "power_entity": "Leistungssensor fuer Ertragsrate (optional, z.B. sensor.emma_feed_in_power)",
-          "power_invert": "Leistungsvorzeichen invertieren (aktivieren, wenn positiv = Einspeisung)"
+          "power_invert": "Leistungsvorzeichen invertieren (aktivieren, wenn positiv = Einspeisung)",
+          "sunrise_buffer_hours": "Sonnenaufgangspuffer fuer den Sensor \"Hoeherer Preis vor Sonnenaufgang\" (Stunden nach Sonnenaufgang, die noch beruecksichtigt werden, z.B. 2)"
         }
       }
     },
@@ -32,7 +33,8 @@
           "vat": "MwSt-Faktor (z.B. 1.081 fuer 8.1%)",
           "surcharge": "Fixer Zuschlag pro kWh (nach MwSt)",
           "power_entity": "Leistungssensor fuer Ertragsrate (optional, z.B. sensor.emma_feed_in_power)",
-          "power_invert": "Leistungsvorzeichen invertieren (aktivieren, wenn positiv = Einspeisung)"
+          "power_invert": "Leistungsvorzeichen invertieren (aktivieren, wenn positiv = Einspeisung)",
+          "sunrise_buffer_hours": "Sonnenaufgangspuffer fuer den Sensor \"Hoeherer Preis vor Sonnenaufgang\" (Stunden nach Sonnenaufgang, die noch beruecksichtigt werden, z.B. 2)"
         }
       }
     },

@@ -18,10 +18,12 @@ from .const import (
     CONF_POWER_ENTITY,
     CONF_POWER_INVERT,
     CONF_PRICE_COMPONENT,
+    CONF_SUNRISE_BUFFER_HOURS,
     CONF_SURCHARGE,
     CONF_VAT,
     DEFAULT_COMPONENT,
     DEFAULT_NAME,
+    DEFAULT_SUNRISE_BUFFER_HOURS,
     DEFAULT_URL,
     DOMAIN,
     PRICE_COMPONENTS,
@@ -100,6 +102,12 @@ def _user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_POWER_INVERT,
                 default=defaults.get(CONF_POWER_INVERT, False),
             ): bool,
+            vol.Optional(
+                CONF_SUNRISE_BUFFER_HOURS,
+                default=defaults.get(
+                    CONF_SUNRISE_BUFFER_HOURS, DEFAULT_SUNRISE_BUFFER_HOURS
+                ),
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=6.0)),
         }
     )
 
@@ -122,6 +130,10 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
         CONF_POWER_INVERT,
         config_entry.data.get(CONF_POWER_INVERT, False),
     )
+    current_sunrise_buffer = config_entry.options.get(
+        CONF_SUNRISE_BUFFER_HOURS,
+        config_entry.data.get(CONF_SUNRISE_BUFFER_HOURS, DEFAULT_SUNRISE_BUFFER_HOURS),
+    )
 
     return vol.Schema(
         {
@@ -141,6 +153,10 @@ def _options_schema(config_entry: ConfigEntry) -> vol.Schema:
                 CONF_POWER_INVERT,
                 default=current_power_invert,
             ): bool,
+            vol.Optional(
+                CONF_SUNRISE_BUFFER_HOURS,
+                default=current_sunrise_buffer,
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.0, max=6.0)),
         }
     )
 

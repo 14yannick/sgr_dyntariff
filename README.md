@@ -22,6 +22,18 @@ https://smartgridready.ch/loesungen/dynamischetarife
 - Handles provider behavior where the evening publication returns **only
   the next day**: slots are merged into a cache so today's prices stay
   available.
+- **Max/Min price today** sensors, plus dedicated **Max/Min price start**
+  and **Max/Min price end** timestamp sensors — usable directly as `at:`
+  targets in a `time` trigger for scheduling right at the daily price
+  peak/trough without any template math.
+- Optional **Export value rate** sensor — point it at your inverter's power
+  sensor (with an invert flag for sign convention) to get a live CHF/h
+  earning-rate sensor natively, no manual templates needed.
+- **Higher price before sunrise** binary sensor — on when a better price is
+  still coming before the next sunrise (plus a configurable buffer past
+  sunrise, default 2h, to account for solar not reaching full output right
+  at sunrise), useful for deciding whether to discharge a battery now or
+  hold off.
 - Unit taken from the API (`CHF_kWh` → `CHF/kWh` etc.).
 - Optional VAT factor and fixed surcharge per source (changeable later via
   the entry's *Configure* dialog).
@@ -49,6 +61,9 @@ Settings → Devices & Services → **Add integration** →
 | Price component | `feed_in` for remuneration; `electricity`/`grid`/`integrated` for consumption tariffs |
 | VAT factor | e.g. `1.081` for 8.1% Swiss VAT (default `1.0`) |
 | Surcharge | fixed amount per kWh added after VAT (default `0`) |
+| Power sensor | optional; enables the **Export value rate** sensor |
+| Invert power sign | check if positive power means exporting on your sensor |
+| Sunrise buffer | hours past sunrise still considered "before sunrise" (default `2`) |
 
 The URL is validated during setup; a typo fails in the dialog.
 
@@ -88,6 +103,10 @@ automation:
   restored on startup, so a restart between the evening publication
   (~18:00) and midnight still has the remainder of *today* available even
   though the API itself no longer serves it at that point.
+- Polling checks in every 30 minutes but only actually queries the API once
+  the cached slots stop covering several hours ahead — prices are published
+  once per day, so there's nothing to gain from re-fetching more often than
+  that.
 - Version 2 of the SmartGridready specification (valid for 2027) was
   published in June 2026; this integration targets V1 and will be updated.
 

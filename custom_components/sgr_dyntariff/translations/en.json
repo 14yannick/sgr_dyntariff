@@ -11,7 +11,8 @@
           "vat": "VAT factor (e.g. 1.081 for 8.1%)",
           "surcharge": "Fixed surcharge per kWh (applied after VAT)",
           "power_entity": "Power sensor for export rate (optional, e.g. sensor.emma_feed_in_power)",
-          "power_invert": "Invert power sign (check if positive means exporting)"
+          "power_invert": "Invert power sign (check if positive means exporting)",
+          "sunrise_buffer_hours": "Sunrise buffer for the \"higher price before sunrise\" sensor (hours after sunrise still considered, e.g. 2)"
         }
       }
     },
@@ -32,7 +33,8 @@
           "vat": "VAT factor (e.g. 1.081 for 8.1%)",
           "surcharge": "Fixed surcharge per kWh (applied after VAT)",
           "power_entity": "Power sensor for export rate (optional, e.g. sensor.emma_feed_in_power)",
-          "power_invert": "Invert power sign (check if positive means exporting)"
+          "power_invert": "Invert power sign (check if positive means exporting)",
+          "sunrise_buffer_hours": "Sunrise buffer for the \"higher price before sunrise\" sensor (hours after sunrise still considered, e.g. 2)"
         }
       }
     },

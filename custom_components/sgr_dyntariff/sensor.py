@@ -82,6 +82,24 @@ def _min_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
     return _price_extreme_run(data, min)
 
 
+class _SgrCoordinatorEntity(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+    """Shared base that stays available as long as slot data is cached.
+
+    CoordinatorEntity's default `available` tracks `last_update_success`,
+    which would flip every sensor to unavailable on a single transient fetch
+    failure -- even though the coordinator still holds perfectly usable
+    cached slots from the last successful fetch (the merge in
+    `_async_update_data` never discards them). Basing availability on the
+    cache itself means a one-off bad fetch no longer blanks the sensors;
+    `native_value` still correctly returns None/unknown if the cache has no
+    slot covering the current moment.
+    """
+
+    @property
+    def available(self) -> bool:
+        return bool((self.coordinator.data or {}).get("slots"))
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -128,7 +146,7 @@ async def async_setup_entry(
     )
 
 
-class SgrPriceSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+class SgrPriceSensor(_SgrCoordinatorEntity):
     """Current dynamic tariff price with forecast attributes."""
 
     _attr_icon = "mdi:transmission-tower"
@@ -199,7 +217,7 @@ class SgrPriceSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
         }
 
 
-class SgrExportValueRateSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+class SgrExportValueRateSensor(_SgrCoordinatorEntity):
     """Instantaneous earning rate (price/kWh x exported kW) from a power sensor."""
 
     _attr_icon = "mdi:cash-fast"
@@ -264,7 +282,7 @@ class SgrExportValueRateSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEn
         return round(export_kw * slot["price"], 5)
 
 
-class SgrPriceExtremeTodaySensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+class SgrPriceExtremeTodaySensor(_SgrCoordinatorEntity):
     """Highest or lowest price of today, with the time interval it applies to."""
 
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -307,7 +325,7 @@ class SgrPriceExtremeTodaySensor(CoordinatorEntity[SgrTariffCoordinator], Sensor
         }
 
 
-class SgrPriceExtremeSlotSensor(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
+class SgrPriceExtremeSlotSensor(_SgrCoordinatorEntity):
     """Start or end of today's highest/lowest-price slot, for time-trigger automations.
 
     HA's time trigger accepts a sensor entity_id for its `at:` option as long

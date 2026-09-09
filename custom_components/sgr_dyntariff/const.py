@@ -7,10 +7,12 @@ CONF_VAT = "vat"
 CONF_SURCHARGE = "surcharge"
 CONF_POWER_ENTITY = "power_entity"
 CONF_POWER_INVERT = "power_invert"
+CONF_SUNRISE_BUFFER_HOURS = "sunrise_buffer_hours"
 
 DEFAULT_NAME = "Dynamic Tariff"
 DEFAULT_URL = "https://api.bkw.ch/api/dyntariffs/v1/Tariffs/energyreturn"
 DEFAULT_COMPONENT = "feed_in"
+DEFAULT_SUNRISE_BUFFER_HOURS = 2.0
 
 # Price components defined by the VSE 2026 / SmartGridready TariffDto schema
 PRICE_COMPONENTS = ["feed_in", "electricity", "grid", "integrated", "regional_fees"]
@@ -24,3 +26,6 @@ UNIT_MAP = {
 }
 
 UPDATE_INTERVAL_MINUTES = 30
+
+# HA's built-in sun integration entity; always present, not user-configurable.
+SUN_ENTITY_ID = "sun.sun"

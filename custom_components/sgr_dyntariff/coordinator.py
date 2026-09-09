@@ -23,6 +23,13 @@ after the evening publication. That cache is also persisted to disk after
 every successful fetch and restored before the first one on startup, so a
 restart between the evening publication and midnight doesn't lose today's
 remaining slots even though the API itself would no longer serve them.
+
+Since prices are published in full-day batches rather than changing
+continuously, polling still ticks every UPDATE_INTERVAL_MINUTES but skips
+the actual HTTP request whenever the cache already covers at least
+MIN_LOOKAHEAD_HOURS ahead of now -- the API is only actually queried once
+that runway starts running out (mainly in the hours before the next
+day's prices are expected).
 """
 
 from __future__ import annotations
@@ -45,6 +52,11 @@ from .const import DOMAIN, PRICE_COMPONENTS, UNIT_MAP, UPDATE_INTERVAL_MINUTES
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
+
+# Skip the actual API request as long as the cache already covers at least
+# this far ahead of now -- prices don't change within a published day, so
+# there's nothing to gain from re-fetching until this runway runs low.
+MIN_LOOKAHEAD_HOURS = 7
 
 
 def _slot_store(hass: HomeAssistant, entry_id: str) -> Store[dict]:
@@ -148,6 +160,8 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         self._vat = vat
         self._surcharge = surcharge
         self._slot_cache: dict[str, dict] = {}
+        self._unit: str | None = None
+        self._publication_timestamp: Any = None
         self._store = _slot_store(hass, entry_id)
 
     async def async_restore_slots(self) -> None:
@@ -163,6 +177,8 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         stored = await self._store.async_load()
         if not stored:
             return
+        self._unit = stored.get("unit")
+        self._publication_timestamp = stored.get("publication_timestamp")
         for raw in stored.get("slots", []):
             start = _parse_timestamp(raw.get("start"))
             end = _parse_timestamp(raw.get("end"))
@@ -179,6 +195,8 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         try:
             await self._store.async_save(
                 {
+                    "unit": self._unit,
+                    "publication_timestamp": self._publication_timestamp,
                     "slots": [
                         {
                             "start": slot["start"].isoformat(),
@@ -186,13 +204,36 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
                             "price": slot["price"],
                         }
                         for slot in self._slot_cache.values()
-                    ]
+                    ],
                 }
             )
         except OSError:
             _LOGGER.warning("Could not persist slot cache", exc_info=True)
 
+    def _covers(self, target) -> bool:
+        """Return True if a cached slot spans the given instant."""
+        return any(
+            slot["start"] <= target < slot["end"]
+            for slot in self._slot_cache.values()
+        )
+
+    def _cached_data(self) -> dict:
+        """Build the coordinator's return value from the current cache."""
+        return {
+            "slots": sorted(self._slot_cache.values(), key=lambda s: s["start"]),
+            "unit": self._unit,
+            "publication_timestamp": self._publication_timestamp,
+        }
+
     async def _async_update_data(self) -> dict:
+        lookahead = dt_util.utcnow() + timedelta(hours=MIN_LOOKAHEAD_HOURS)
+        if self._slot_cache and self._covers(lookahead):
+            _LOGGER.debug(
+                "Slot cache already covers the next %sh; skipping API fetch",
+                MIN_LOOKAHEAD_HOURS,
+            )
+            return self._cached_data()
+
         try:
             # Note: per spec, endpoints reject query parameters with 400,
             # so the URL is used exactly as configured.
@@ -217,6 +258,9 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         for key in [k for k, s in self._slot_cache.items() if s["end"] < cutoff]:
             del self._slot_cache[key]
 
-        data["slots"] = sorted(self._slot_cache.values(), key=lambda s: s["start"])
+        if data["unit"] is not None:
+            self._unit = data["unit"]
+        self._publication_timestamp = data["publication_timestamp"]
+
         await self._async_save_slots()
-        return data
+        return self._cached_data()
