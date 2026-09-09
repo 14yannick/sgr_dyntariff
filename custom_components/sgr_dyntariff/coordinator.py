@@ -115,9 +115,10 @@ def parse_payload(payload: Any, component: str, vat: float, surcharge: float) ->
         value = comp.get("value")
         if value is None:
             continue
-        if unit is None:
+        if not unit:
             raw_unit = comp.get("unit")
-            unit = UNIT_MAP.get(raw_unit, raw_unit)
+            if raw_unit:
+                unit = UNIT_MAP.get(raw_unit, raw_unit)
 
         slots.append(
             {
@@ -258,7 +259,7 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
         for key in [k for k, s in self._slot_cache.items() if s["end"] < cutoff]:
             del self._slot_cache[key]
 
-        if data["unit"] is not None:
+        if data["unit"]:
             self._unit = data["unit"]
         self._publication_timestamp = data["publication_timestamp"]
 

@@ -15,9 +15,9 @@ from homeassistant.helpers.event import async_track_time_change
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_SUNRISE_BUFFER_HOURS, DEFAULT_SUNRISE_BUFFER_HOURS, DOMAIN, SUN_ENTITY_ID
+from .const import CONF_SUNRISE_BUFFER_HOURS, DEFAULT_SUNRISE_BUFFER_HOURS, DOMAIN
 from .coordinator import SgrTariffCoordinator
-from .sensor import _current_slot
+from .sensor import _current_slot, _next_sunrise, _peak_before_sunrise, _relevant_sunrise
 
 
 async def async_setup_entry(
@@ -87,52 +87,25 @@ class SgrHigherPriceBeforeSunriseSensor(
     def available(self) -> bool:
         return bool((self.coordinator.data or {}).get("slots"))
 
-    def _next_sunrise(self):
-        """Return the next sunrise, whether that's later today or tomorrow."""
-        sun_state = self.hass.states.get(SUN_ENTITY_ID)
-        if sun_state is None:
-            return None
-        return dt_util.parse_datetime(sun_state.attributes.get("next_rising") or "")
-
-    def _window_end(self):
-        """Return the end of the pre-sunrise window (next sunrise + buffer)."""
-        next_sunrise = self._next_sunrise()
-        if next_sunrise is None:
-            return None
-        return next_sunrise + self._sunrise_buffer
-
-    def _peak_before_sunrise(self) -> tuple[float | None, dict | None, bool]:
-        """Return (peak_price, peak_slot, has_data) for slots in the window."""
-        window_end = self._window_end()
-        if window_end is None:
-            return None, None, False
-        now = dt_util.utcnow()
-        slots = [
-            s
-            for s in (self.coordinator.data or {}).get("slots", [])
-            if now <= s["start"] < window_end
-        ]
-        if not slots:
-            return None, None, False
-        peak_slot = max(slots, key=lambda s: s["price"])
-        return peak_slot["price"], peak_slot, True
-
     @property
     def is_on(self) -> bool | None:
         current_slot = _current_slot(self.coordinator.data)
         if current_slot is None:
             return None
-        peak_price, _, has_data = self._peak_before_sunrise()
-        if not has_data:
+        run = _peak_before_sunrise(self.hass, self.coordinator.data, self._sunrise_buffer)
+        if run is None:
             return None
+        peak_price, _ = run
         return peak_price > current_slot["price"]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         current_slot = _current_slot(self.coordinator.data)
-        peak_price, peak_slot, _ = self._peak_before_sunrise()
-        next_sunrise = self._next_sunrise()
-        window_end = self._window_end()
+        run = _peak_before_sunrise(self.hass, self.coordinator.data, self._sunrise_buffer)
+        peak_price, peak_slot = run if run else (None, None)
+        next_sunrise = _next_sunrise(self.hass)
+        sunrise = _relevant_sunrise(self.hass)
+        window_end = sunrise + self._sunrise_buffer if sunrise else None
         return {
             "current_price": current_slot["price"] if current_slot else None,
             "peak_price_before_sunrise": peak_price,

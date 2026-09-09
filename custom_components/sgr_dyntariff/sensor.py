@@ -26,8 +26,11 @@ from .const import (
     CONF_POWER_ENTITY,
     CONF_POWER_INVERT,
     CONF_PRICE_COMPONENT,
+    CONF_SUNRISE_BUFFER_HOURS,
     DEFAULT_COMPONENT,
+    DEFAULT_SUNRISE_BUFFER_HOURS,
     DOMAIN,
+    SUN_ENTITY_ID,
 )
 from .coordinator import SgrTariffCoordinator
 
@@ -82,6 +85,56 @@ def _min_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
     return _price_extreme_run(data, min)
 
 
+def _next_sunrise(hass: HomeAssistant):
+    """Return the next sunrise, whether that's later today or tomorrow."""
+    sun_state = hass.states.get(SUN_ENTITY_ID)
+    if sun_state is None:
+        return None
+    return dt_util.parse_datetime(sun_state.attributes.get("next_rising") or "")
+
+
+def _relevant_sunrise(hass: HomeAssistant):
+    """Return the sunrise the pre-sunrise buffer window should be anchored to.
+
+    `sun.sun`'s next_rising always points to the *next* sunrise and flips
+    forward to tomorrow the instant today's sunrise actually happens -- so
+    using it as-is would make the buffer window balloon out to ~24h right
+    at that crossing instead of just covering the intended buffer past
+    sunrise. If next_rising is nearly a full day away, today's sunrise has
+    already passed, so step it back ~24h to recover today's actual sunrise
+    (day length shifts by only minutes day to day, well within a
+    buffer-sized margin of error).
+    """
+    next_sunrise = _next_sunrise(hass)
+    if next_sunrise is None:
+        return None
+    if next_sunrise - dt_util.utcnow() > timedelta(hours=20):
+        return next_sunrise - timedelta(hours=24)
+    return next_sunrise
+
+
+def _peak_before_sunrise(
+    hass: HomeAssistant, data: dict | None, buffer: timedelta
+) -> tuple[float, dict] | None:
+    """Return (peak_price, peak_slot) for the best slot before sunrise + buffer.
+
+    The day's overall max (see _max_price_run) can land in the evening, which
+    is the wrong target for a "discharge before solar takes over" automation
+    -- this scans only the window up to sunrise (plus a buffer for solar's
+    ramp-up) instead.
+    """
+    sunrise = _relevant_sunrise(hass)
+    if sunrise is None:
+        return None
+    window_end = sunrise + buffer
+    now = dt_util.utcnow()
+    slots = [s for s in (data or {}).get("slots", []) if now <= s["start"] < window_end]
+    if not slots:
+        return None
+    peak_slot = max(slots, key=lambda s: s["price"])
+    return peak_slot["price"], peak_slot
+
+
 class _SgrCoordinatorEntity(CoordinatorEntity[SgrTariffCoordinator], SensorEntity):
     """Shared base that stays available as long as slot data is cached.
 
@@ -106,6 +159,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: SgrTariffCoordinator = hass.data[DOMAIN][entry.entry_id]
+    sunrise_buffer_hours = entry.options.get(
+        CONF_SUNRISE_BUFFER_HOURS,
+        entry.data.get(CONF_SUNRISE_BUFFER_HOURS, DEFAULT_SUNRISE_BUFFER_HOURS),
+    )
+
     entities: list[SensorEntity] = [
         SgrPriceSensor(coordinator, entry),
         SgrPriceExtremeTodaySensor(coordinator, entry, "max"),
@@ -114,6 +172,7 @@ async def async_setup_entry(
         SgrPriceExtremeSlotSensor(coordinator, entry, "max", "end"),
         SgrPriceExtremeSlotSensor(coordinator, entry, "min", "start"),
         SgrPriceExtremeSlotSensor(coordinator, entry, "min", "end"),
+        SgrPeakBeforeSunriseSensor(coordinator, entry, float(sunrise_buffer_hours)),
     ]
 
     power_entity = entry.options.get(
@@ -368,3 +427,48 @@ class SgrPriceExtremeSlotSensor(_SgrCoordinatorEntity):
             return None
         _, start_slot, end_slot = run
         return start_slot["start"] if self._edge == "start" else end_slot["end"]
+
+
+class SgrPeakBeforeSunriseSensor(_SgrCoordinatorEntity):
+    """Start time of the best-priced slot before the next sunrise (+ buffer).
+
+    The day's overall max/min (see SgrPriceExtremeSlotSensor) can land in
+    the evening, which is the wrong trigger for a "discharge before solar
+    takes over" morning automation -- this is the pre-sunrise-window
+    equivalent, usable the same way as an `at:` target in a time trigger.
+    See also the "Higher price before sunrise" binary sensor for the
+    yes/no signal on whether it's worth holding off an evening discharge
+    for this slot instead.
+    """
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_icon = "mdi:weather-sunset-up"
+    _attr_has_entity_name = True
+    _attr_name = "Peak time before sunrise"
+
+    def __init__(
+        self,
+        coordinator: SgrTariffCoordinator,
+        entry: ConfigEntry,
+        sunrise_buffer_hours: float,
+    ) -> None:
+        super().__init__(coordinator)
+        self._buffer = timedelta(hours=sunrise_buffer_hours)
+        self._attr_unique_id = f"{entry.entry_id}_peak_time_before_sunrise"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, entry.entry_id)},
+            name=entry.data.get(CONF_NAME) or entry.title,
+            manufacturer="SmartGridready / VSE dynamic tariff",
+            entry_type=DeviceEntryType.SERVICE,
+            configuration_url=entry.data.get("url"),
+        )
+
+    @property
+    def native_value(self):
+        run = _peak_before_sunrise(self.hass, self.coordinator.data, self._buffer)
+        return run[1]["start"] if run else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        run = _peak_before_sunrise(self.hass, self.coordinator.data, self._buffer)
+        return {"price": run[0] if run else None}
