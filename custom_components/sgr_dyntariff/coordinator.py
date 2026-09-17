@@ -228,7 +228,12 @@ class SgrTariffCoordinator(DataUpdateCoordinator[dict]):
 
     async def _async_update_data(self) -> dict:
         lookahead = dt_util.utcnow() + timedelta(hours=MIN_LOOKAHEAD_HOURS)
-        if self._slot_cache and self._covers(lookahead):
+        # Require a known unit before ever skipping: a cache restored from a
+        # pre-1.0.7 storage file has slots but no persisted unit, which would
+        # otherwise leave native_unit_of_measurement blank for up to
+        # MIN_LOOKAHEAD_HOURS after an upgrade, since the slots alone can
+        # already satisfy _covers().
+        if self._slot_cache and self._unit and self._covers(lookahead):
             _LOGGER.debug(
                 "Slot cache already covers the next %sh; skipping API fetch",
                 MIN_LOOKAHEAD_HOURS,
