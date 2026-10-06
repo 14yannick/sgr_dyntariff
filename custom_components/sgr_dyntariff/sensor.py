@@ -44,27 +44,35 @@ def _current_slot(data: dict | None) -> dict | None:
     return None
 
 
-def _today_slots(data: dict | None) -> list[dict]:
-    """Return today's slots, in chronological order."""
-    today = dt_util.now().date()
+def _day_slots(data: dict | None, day) -> list[dict]:
+    """Return a given local date's slots, in chronological order."""
     slots = (data or {}).get("slots", [])
     return sorted(
-        (s for s in slots if dt_util.as_local(s["start"]).date() == today),
+        (s for s in slots if dt_util.as_local(s["start"]).date() == day),
         key=lambda s: s["start"],
     )
 
 
-def _price_extreme_run(
-    data: dict | None, pick: Callable[[list[float]], float]
+def _today_slots(data: dict | None) -> list[dict]:
+    """Return today's slots, in chronological order."""
+    return _day_slots(data, dt_util.now().date())
+
+
+def _tomorrow_slots(data: dict | None) -> list[dict]:
+    """Return tomorrow's slots, in chronological order."""
+    return _day_slots(data, dt_util.now().date() + timedelta(days=1))
+
+
+def _extreme_run(
+    day_slots: list[dict], pick: Callable[[list[float]], float]
 ) -> tuple[float, dict, dict] | None:
-    """Return (price, first_slot, last_slot) for today's first run at the picked price."""
-    today_slots = _today_slots(data)
-    if not today_slots:
+    """Return (price, first_slot, last_slot) for the first run at the picked price."""
+    if not day_slots:
         return None
-    target_price = pick([s["price"] for s in today_slots])
+    target_price = pick([s["price"] for s in day_slots])
 
     start_slot = end_slot = None
-    for slot in today_slots:
+    for slot in day_slots:
         if slot["price"] == target_price:
             if start_slot is None:
                 start_slot = slot
@@ -75,6 +83,13 @@ def _price_extreme_run(
     return target_price, start_slot, end_slot
 
 
+def _price_extreme_run(
+    data: dict | None, pick: Callable[[list[float]], float]
+) -> tuple[float, dict, dict] | None:
+    """Return (price, first_slot, last_slot) for today's first run at the picked price."""
+    return _extreme_run(_today_slots(data), pick)
+
+
 def _max_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
     """Return (max_price, first_slot, last_slot) for today's first run at that price."""
     return _price_extreme_run(data, max)
@@ -83,6 +98,23 @@ def _max_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
 def _min_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
     """Return (min_price, first_slot, last_slot) for today's first run at that price."""
     return _price_extreme_run(data, min)
+
+
+def _tomorrow_price_extreme_run(
+    data: dict | None, pick: Callable[[list[float]], float]
+) -> tuple[float, dict, dict] | None:
+    """Return (price, first_slot, last_slot) for tomorrow's first run at the picked price."""
+    return _extreme_run(_tomorrow_slots(data), pick)
+
+
+def _tomorrow_max_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
+    """Return (max_price, first_slot, last_slot) for tomorrow's first run at that price."""
+    return _tomorrow_price_extreme_run(data, max)
+
+
+def _tomorrow_min_price_run(data: dict | None) -> tuple[float, dict, dict] | None:
+    """Return (min_price, first_slot, last_slot) for tomorrow's first run at that price."""
+    return _tomorrow_price_extreme_run(data, min)
 
 
 def _next_sunrise(hass: HomeAssistant):
@@ -166,8 +198,10 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = [
         SgrPriceSensor(coordinator, entry),
-        SgrPriceExtremeTodaySensor(coordinator, entry, "max"),
-        SgrPriceExtremeTodaySensor(coordinator, entry, "min"),
+        SgrPriceExtremeDaySensor(coordinator, entry, "max", "today"),
+        SgrPriceExtremeDaySensor(coordinator, entry, "min", "today"),
+        SgrPriceExtremeDaySensor(coordinator, entry, "max", "tomorrow"),
+        SgrPriceExtremeDaySensor(coordinator, entry, "min", "tomorrow"),
         SgrPriceExtremeSlotSensor(coordinator, entry, "max", "start"),
         SgrPriceExtremeSlotSensor(coordinator, entry, "max", "end"),
         SgrPriceExtremeSlotSensor(coordinator, entry, "min", "start"),
@@ -341,20 +375,37 @@ class SgrExportValueRateSensor(_SgrCoordinatorEntity):
         return round(export_kw * slot["price"], 5)
 
 
-class SgrPriceExtremeTodaySensor(_SgrCoordinatorEntity):
-    """Highest or lowest price of today, with the time interval it applies to."""
+_DAY_RUN_FNS: dict[tuple[str, str], Callable] = {
+    ("max", "today"): _max_price_run,
+    ("min", "today"): _min_price_run,
+    ("max", "tomorrow"): _tomorrow_max_price_run,
+    ("min", "tomorrow"): _tomorrow_min_price_run,
+}
+
+
+class SgrPriceExtremeDaySensor(_SgrCoordinatorEntity):
+    """Highest or lowest price of today/tomorrow, with the time interval it applies to.
+
+    The tomorrow variants stay unknown until the provider publishes
+    tomorrow's prices (see the main sensor's `tomorrow_valid` attribute).
+    """
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_has_entity_name = True
 
     def __init__(
-        self, coordinator: SgrTariffCoordinator, entry: ConfigEntry, kind: str
+        self,
+        coordinator: SgrTariffCoordinator,
+        entry: ConfigEntry,
+        kind: str,
+        day: str,
     ) -> None:
         super().__init__(coordinator)
-        self._run_fn = _max_price_run if kind == "max" else _min_price_run
+        self._run_fn = _DAY_RUN_FNS[(kind, day)]
+        label = "Max" if kind == "max" else "Min"
         self._attr_icon = "mdi:trending-up" if kind == "max" else "mdi:trending-down"
-        self._attr_name = f"{'Max' if kind == 'max' else 'Min'} price today"
-        self._attr_unique_id = f"{entry.entry_id}_{kind}_price_today"
+        self._attr_name = f"{label} price {day}"
+        self._attr_unique_id = f"{entry.entry_id}_{kind}_price_{day}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.data.get(CONF_NAME) or entry.title,
